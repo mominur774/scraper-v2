@@ -6,6 +6,9 @@ import random
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.contrib import messages
+import logging
+
+logger = logging.getLogger(__name__)
 
 def fetch_url(request, session, url, headers, data, csv_writer, page_limit):
     try:
@@ -31,6 +34,7 @@ def fetch_url(request, session, url, headers, data, csv_writer, page_limit):
 
         csv_writer.writerows(results)
     except Exception as e:
+        logger.debug(f"Error: {str(e)}")
         messages.error(request, f"Error: {str(e)}")
 
 def index(request):
