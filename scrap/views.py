@@ -1,6 +1,5 @@
 import re
-import aiohttp
-import asyncio
+import requests
 import csv
 import json
 import random
@@ -8,9 +7,7 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from django.contrib import messages
 
-event_loop = asyncio.get_event_loop()
-
-async def fetch_url(request, session, url, headers, data, csv_writer, page_limit):
+def fetch_url(request, session, url, headers, data, csv_writer, page_limit):
     try:
         template = json.loads(data)
         results = []
@@ -21,28 +18,25 @@ async def fetch_url(request, session, url, headers, data, csv_writer, page_limit
             if not random_user_id == template['user_id']:
                 template['user_id'] = random_user_id
 
-            async with session.post(url, headers=headers, json=template) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for item in data['data']:
-                        data_dict = {}
-                        for key, value in item.items():
-                            data_dict[key] = value['value']
-                        results.append(data_dict)
-                else:
-                    print(f"Request failed with status code {response.status}")
+            response = session.post(url, headers=headers, json=template)
+            if response.status_code == 200:
+                data = response.json()
+                for item in data['data']:
+                    data_dict = {}
+                    for key, value in item.items():
+                        data_dict[key] = value['value']
+                    results.append(data_dict)
+            else:
+                print(f"Request failed with status code {response.status_code}")
 
         csv_writer.writerows(results)
     except Exception as e:
         messages.error(request, f"Error: {str(e)}")
 
-
-
-async def index(request):
+def index(request):
     if request.method == 'POST':
         page_limit = int(request.POST.get('page_limit'))
         curl_commands = request.POST.getlist('curl')
-
 
         # Initialize the CSV response
         response = HttpResponse(content_type='text/csv')
@@ -54,8 +48,7 @@ async def index(request):
                         "company_profile_image_url", "linkedin_url", "company_id", "facebook_url", "twitter_url"])
         csv_writer.writeheader()
 
-        async with aiohttp.ClientSession() as session:
-            tasks = []
+        with requests.Session() as session:
             for index, curl_command in enumerate(curl_commands):
                 print("\n=========")
                 print(f"Start task {index+1}")
@@ -63,10 +56,7 @@ async def index(request):
 
                 url_pattern = r"curl '(.*?)'"
                 headers_pattern = r"-H '(.*?)'"
-                # data_pattern = r"--data-raw (?:\$)?'(.*?)'"
                 data_pattern = r"--data-raw (?:\$)?'(.*?)'(?:\s|$)"
-                # data_pattern = r"--data-raw (?:\$)?'((?:[^'\\]|\\.)*)'"
-                
 
                 url_match = re.search(url_pattern, curl_command, re.DOTALL)
                 headers_matches = re.findall(headers_pattern, curl_command)
@@ -86,17 +76,13 @@ async def index(request):
                     if r"\'":
                         data = data.replace(r"\'", "'")
 
+                    fetch_url(request, session, url, headers, data, csv_writer, page_limit)
 
-                    tasks.append(fetch_url(request, session, url, headers, data, csv_writer, page_limit))
+                    # Add a delay if needed
+                    # time.sleep(10)
 
-                    await asyncio.sleep(10) 
-                
                 print(f"End task {index+1}")
                 print("=========\n")
-                    
-                
-            await asyncio.gather(*tasks)
-            event_loop.close()
 
         print("\n=========")
         print(f"Completed")
